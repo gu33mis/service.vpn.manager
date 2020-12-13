@@ -37,7 +37,7 @@ from libs.common import getConnectionErrorCount, setConnectionErrorCount, getAdd
 from libs.common import getAPICommand, clearAPICommand, fixKeymaps, setConnectTime, getConnectTime, requestVPNCycle, failoverConnection
 from libs.common import forceReconnect, isForceReconnect, updateIPInfo, updateAPITimer, wizard, connectionValidated, getVPNRequestedServer
 from libs.common import getVPNServer, setReconnectTime, configUpdate, resumeStartStop, suspendStartStop, checkDirectory, clearServiceState, getVPNServerFromFile
-from libs.vpnplatform import getPlatform, platforms, connection_status, getAddonPath, writeVPNLog, supportSystemd, addSystemd, removeSystemd, copySystemdFiles
+from libs.vpnplatform import getPlatform, platforms, connection_status, getAddonPath, writeVPNLog, supportSystemd, addSystemd, removeSystemd, copySystemdFiles, generateSystemdFile
 from libs.vpnplatform import isVPNTaskRunning, updateSystemTime, fakeConnection, fakeItTillYouMakeIt, generateVPNs, writeVPNConfiguration
 from libs.utility import debugTrace, errorTrace, infoTrace, ifDebug, newPrint, setID, setName, getShort, setShort, setVery, running, setRunning, now, isCustom
 from libs.vpnproviders import removeGeneratedFiles, cleanPassFiles, fixOVPNFiles, getVPNLocation, usesPassAuth, clearKeysAndCerts, checkForVPNUpdates
@@ -457,8 +457,11 @@ if __name__ == '__main__' and not running():
                     infoTrace("service.py", "Updating systemd, connect before boot is " + connect_on_boot_setting + ", location is " + connect_on_boot_ovpn)
                     removeSystemd()
                     if connect_on_boot_setting == "true" and (not connect_on_boot_ovpn == ""):
-                        copySystemdFiles()
-                        addSystemd()
+                        infoTrace("service.py", "Generating OpenVPN service files for systemd")
+                        if generateSystemdFile(connect_on_boot_ovpn):
+                            copySystemdFiles()
+                            addSystemd()
+                            xbmc.log("Copied", level=xbmc.LOGNOTICE)
                 
                 # Determine if the VPN has been set up
                 if primary_vpns[0] == "":

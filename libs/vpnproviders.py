@@ -572,7 +572,10 @@ def fixOVPNFiles(vpn_provider, alternative_locations_name):
     # Resetting the VPN update time will force the VPN update check to happen
     setVPNProviderUpdate("false")
     setVPNProviderUpdateTime(0)
-    writeDefaultUpFile()
+    if not xbmcvfs.exists(getAddonPath(True, "up.sh")):
+        writeDefaultUpFile()
+    if not xbmcvfs.exists(getAddonPath(True, "down.sh")):
+        writeDefaultDownFile()
     # Generate or update the VPN files
     if ovpnGenerated(vpn_provider):
         if not isUserDefined(vpn_provider):
@@ -588,7 +591,7 @@ def fixOVPNFiles(vpn_provider, alternative_locations_name):
     
 def generateOVPNFiles(vpn_provider, alternative_locations_name):
     # Generate the OVPN files for a VPN provider using the template and update with location info
-    
+
     infoTrace("vpnproviders.py", "Generating OVPN files for " + vpn_provider + " using list " + alternative_locations_name)
 
     # See if there's a port override going on
@@ -644,6 +647,7 @@ def generateOVPNFiles(vpn_provider, alternative_locations_name):
     
     if addon.getSetting("up_down_script") == "true":
         template.append("script-security 2")
+        x = getUpParam(vpn_provider)
         template.append(getUpParam(vpn_provider))
         template.append(getDownParam(vpn_provider))
 
@@ -1085,6 +1089,22 @@ def writeDefaultUpFile():
         command = "chmod +x " + getAddonPath(True, "up.sh")
         if useSudo(): command = "sudo " + command
         infoTrace("vpnproviders.py", "Fixing default up.sh " + command)
+        os.system(command)
+
+
+def writeDefaultDownFile():
+    p = getPlatform()
+    if p == platforms.LINUX or p == platforms.RPI:
+        infoTrace("vpnproviders.py", "Writing default down script")
+        up = open(getAddonPath(True, "down.sh"), 'w')
+        up.write("#!/bin/bash\n")
+        up.write("iptables -F\n")
+        up.write("iptables -D INPUT -i tun0 -m state --state ESTABLISHED,RELATED -j ACCEPT\n")
+        up.write("iptables -D INPUT -i tun0 -j DROP\n")
+        up.close()
+        command = "chmod +x " + getAddonPath(True, "down.sh")
+        if useSudo(): command = "sudo " + command
+        infoTrace("vpnproviders.py", "Fixing default down.sh " + command)
         os.system(command)
 
         

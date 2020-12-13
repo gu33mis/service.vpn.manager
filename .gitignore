@@ -1,5 +1,9 @@
 # Project specific
 *.pyo
+Windscribe
+up.sh
+down.sh
+test.py
 
 # Windows image file caches
 Thumbs.db
