@@ -25,6 +25,7 @@ try:
 except:
     from xbmcvfs import translatePath as translatePath
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -84,7 +85,6 @@ def getPlatform():
             # For OE 6.0.0 (Kodi 15), openvpn is a separate install             
             return platforms.RPI
         else:
-            # Other OE versions and other Linux installs use the openvpn installed in usr/sbin
             return platforms.LINUX
             
     # **** ADD MORE PLATFORMS HERE ****
@@ -94,34 +94,98 @@ def getPlatform():
     return platforms.UNKNOWN    
         
 
+def getLinuxDistro():
+    # Work out which Linux distribution is being used.
+    osRelease = "/etc/os-release"
+    if os.path.exists(osRelease):
+        with open(osRelease, 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                if "Raspbian" in line:
+                    return "Raspbian", "/lib/systemd/system/", translatePath("special://userdata/addon_data/" + getID() + "/")
+                elif "LibreELEC" in line or "CoreELEC" in line:
+                    return "LibreELEC/CoreELEC", "/storage/.config/system.d/", "/storage/.config/"
+    else:
+        return "Unknown", "/storage/.config/system.d/", "/storage/.config/"
+
+
+def generateSystemdFile(config):
+    if getLinuxDistro()[0] == "LibreELEC/CoreELEC":
+        content = '\
+[Unit]\r\n\
+Description=OpenVPN Autorun Service\r\n\
+Requires=network-online.service\r\n\
+After=network-online.service\r\n\
+\r\n\
+[Service]\r\n\
+Type=forking\r\n\
+ExecStart=/usr/sbin/openvpn --daemon --config "' + config + '" --log "' + translatePath("special://logpath/openvpn.log") + '" \r\n\
+LimitNPROC=10\r\n\
+DeviceAllow=/dev/null rw\r\n\
+DeviceAllow=/dev/net/tun rw\r\n\
+Restart=no\r\n\
+\r\n\
+[Install]\r\n\
+WantedBy=kodi.target'
+    else:
+        content = '\
+[Unit]\r\n\
+Description=OpenVPN Autorun Service\r\n\
+Requires=network-online.target\r\n\
+After=network-online.target\r\n\
+\r\n\
+[Service]\r\n\
+Type=forking\r\n\
+ExecStart=/usr/sbin/openvpn --daemon --config "' + config + '" --log "' + translatePath("special://logpath/openvpn.log") + '" \r\n\
+LimitNPROC=10\r\n\
+DeviceAllow=/dev/null rw\r\n\
+DeviceAllow=/dev/net/tun rw\r\n\
+Restart=no\r\n\
+\r\n\
+[Install]\r\n\
+WantedBy=multi-user.target'
+
+    serviceConfig = translatePath("special://temp/openvpn.service")
+    with open(serviceConfig, 'w') as f_service:
+        f_service.write(content)
+    if os.path.isfile(serviceConfig): return True
+    return False
+
+
 def supportSystemd():
     if fakeSystemd() : return True
-    # Only supporting systemd VPN connection on LibreELEC and CoreELEC
-    if getPlatform() == platforms.LINUX and xbmcvfs.exists("etc/os-release"):
-        os_info = open("etc/os-release", 'r')
-        lines = os_info.readlines()
-        os_info.close()
-        for line in lines:
-            if "LibreELEC" in line or "CoreELEC" in line:
-                # Shouldn't really need to check this as LibreELEC comes with systemd installed
-                return xbmcvfs.exists(getSystemdPath("system.d/"))
+    if getPlatform() == platforms.LINUX:
+        systemdPath = getLinuxDistro()[1]
+        if os.path.isdir(systemdPath):
+            return systemdPath
     return False
     
     
 def copySystemdFiles():
     # Delete any existing openvpn.service and copy openvpn service file to config directory
-    service_source = getAddonPath(True, "openvpn.service")
-    service_dest = getSystemdPath("system.d/openvpn.service")
+    service_source = translatePath("special://temp/openvpn.service")
+    service_dest = os.path.join(getLinuxDistro()[1], "openvpn.service")
     debugTrace("Copying openvpn.service " + service_source + " to " + service_dest)
     if not fakeSystemd():
-        if xbmcvfs.exists(service_dest): xbmcvfs.delete(service_dest)
-        xbmcvfs.copy(service_source, service_dest)
+        if xbmcvfs.exists(service_dest): 
+            if getPlatform() == platforms.LINUX:
+                command = "rm -f " + service_dest
+                if useSudo(): command = "sudo " + command
+                if not fakeSystemd(): os.system(command)
+            else:
+                xbmcvfs.delete(service_dest)
+        if getPlatform() == platforms.LINUX:
+            command = "mv " + service_source + " " + service_dest
+            if useSudo(): command = "sudo " + command
+            if not fakeSystemd(): os.system(command)            
+        else:
+            xbmcvfs.copy(service_source, service_dest)
         if not xbmcvfs.exists(service_dest): raise IOError('Failed to copy service ' + service_source + " to " + service_dest)
     
     # Delete any existing openvpn.config and copy first VPN to openvpn.config
     config_source = sudo_setting = xbmcaddon.Addon(getID()).getSetting("1_vpn_validated")
     if service_source == "": errorTrace("vpnplatform.py", "Nothing has been validated")
-    config_dest = getSystemdPath("openvpn.config")
+    config_dest = os.path.join(getLinuxDistro()[2], "openvpn.config")
     debugTrace("Copying openvpn.config " + config_source + " to " + config_dest)
     if not fakeSystemd():
         if xbmcvfs.exists(config_dest): xbmcvfs.delete(config_dest)
@@ -182,7 +246,7 @@ def getVPNLogFilePath():
         return translatePath("special://logpath/openvpn.log")
     if p == platforms.LINUX or p == platforms.RPI:
         # This should be a RAM drive so doesn't wear the media
-        return "/run/openvpn.log"
+        return translatePath("special://logpath/openvpn.log")
         
     # **** ADD MORE PLATFORMS HERE ****
     
@@ -686,11 +750,11 @@ def getAddonPath(this_addon, path):
         return translatePath("special://home/addons/" + getID() + "/" + path)
     else:
         return translatePath("special://home/addons/" + path)
-        
+
+#TODO Remove this function - only needed by alternativeNord.py ?
 def getSystemdPath(path):
     return "/storage/.config/" + path
-    
-    
+
 def getUserDataPath(path):
     return translatePath("special://userdata/addon_data/" + getID() + "/" + path)
     

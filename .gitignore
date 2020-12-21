@@ -1,3 +1,12 @@
+# Project specific
+Surfshark
+Windscribe
+UserDefined
+*.pyo
+up.sh
+down.sh
+test.py
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
