@@ -852,3 +852,7 @@ msgstr ""
 msgctxt "#32239"
 msgid "Windscribe"
 msgstr ""
+
+msgctxt "#32240"
+msgid "Surfshark"
+msgstr ""

@@ -1,6 +1,8 @@
 # Project specific
-*.pyo
+Surfshark
 Windscribe
+UserDefined
+*.pyo
 up.sh
 down.sh
 test.py
