@@ -110,44 +110,50 @@ def getLinuxDistro():
 
 
 def generateSystemdFile(config):
+    log_file = getVPNLogFilePath()
+    clearVPNLogFilePath(log_file)
+    # content of the service configuration file
+    content = []
     if getLinuxDistro()[0] == "LibreELEC/CoreELEC":
-        content = '\
-[Unit]\r\n\
-Description=OpenVPN Autorun Service\r\n\
-Requires=network-online.service\r\n\
-After=network-online.service\r\n\
-\r\n\
-[Service]\r\n\
-Type=forking\r\n\
-ExecStart=/usr/sbin/openvpn --daemon --config "' + config + '" --log "' + translatePath("special://logpath/openvpn.log") + '" \r\n\
-LimitNPROC=10\r\n\
-DeviceAllow=/dev/null rw\r\n\
-DeviceAllow=/dev/net/tun rw\r\n\
-Restart=no\r\n\
-\r\n\
-[Install]\r\n\
-WantedBy=kodi.target'
+        content.append("[Unit]")
+        content.append("Description=OpenVPN Autorun Service")
+        content.append("Requires=network-online.service")
+        content.append("After=network-online.service")
+        content.append("[Service]")
+        content.append("Type=forking")
+        if log_file:
+            vpn_exec = 'ExecStart=/usr/sbin/openvpn --daemon --config "' + config + '" --log "' + log_file + '"'
+        else:
+            vpn_exec = 'ExecStart=/usr/sbin/openvpn --daemon --config "' + config + '"'
+        content.append(vpn_exec)
+        content.append("LimitNPROC=10")
+        content.append("DeviceAllow=/dev/null rw")
+        content.append("DeviceAllow=/dev/net/tun rw")
+        content.append("Restart=no")
+        content.append("[Install]")
+        content.append("WantedBy=kodi.target")
     else:
-        content = '\
-[Unit]\r\n\
-Description=OpenVPN Autorun Service\r\n\
-Requires=network-online.target\r\n\
-After=network-online.target\r\n\
-\r\n\
-[Service]\r\n\
-Type=forking\r\n\
-ExecStart=/usr/sbin/openvpn --daemon --config "' + config + '" --log "' + translatePath("special://logpath/openvpn.log") + '" \r\n\
-LimitNPROC=10\r\n\
-DeviceAllow=/dev/null rw\r\n\
-DeviceAllow=/dev/net/tun rw\r\n\
-Restart=no\r\n\
-\r\n\
-[Install]\r\n\
-WantedBy=multi-user.target'
+        content.append("[Unit]")
+        content.append("Description=OpenVPN Autorun Service")
+        content.append("Requires=network-online.target")
+        content.append("After=network-online.target")
+        content.append("[Service]")
+        content.append("Type=forking")
+        if log_file:
+            vpn_exec = 'ExecStart=/usr/sbin/openvpn --daemon --config "' + config + '" --log "' + log_file + '"'
+        else:
+            vpn_exec = 'ExecStart=/usr/sbin/openvpn --daemon --config "' + config + '"'
+        content.append(vpn_exec)
+        content.append("LimitNPROC=10")
+        content.append("DeviceAllow=/dev/null rw")
+        content.append("DeviceAllow=/dev/net/tun rw")
+        content.append("Restart=no")
+        content.append("[Install]")
+        content.append("WantedBy=multi-user.target")
 
     serviceConfig = translatePath("special://temp/openvpn.service")
-    with open(serviceConfig, 'w') as f_service:
-        f_service.write(content)
+    with open(serviceConfig, "w") as f:
+        f.write("\n".join(content))
     if os.path.isfile(serviceConfig): return True
     return False
 
@@ -253,6 +259,26 @@ def getVPNLogFilePath():
     return ""
     
 
+def clearVPNLogFilePath(log_file):
+    try:
+        if xbmcvfs.exists(log_file):
+            xbmcvfs.delete(log_file)
+            xbmc.sleep(500);
+            i = 0
+            while xbmcvfs.exists(log_file) and i < 10:
+                xbmc.sleep(1000)
+                i = i + 1
+            if i == 10:
+                errorTrace("vpnplatform.py", "Tried to delete VPN log file " + log_file + " and it didn't go after 10 seconds")
+            else:
+                debugTrace("Deleted the VPN log file " + log_file + " before starting a new connection")
+        else:
+            debugTrace("No VPN log file " + log_file + " exists to be deleted before starting connection")
+    except Exception as e:
+        errorTrace("vpnplatform.py", "Something bad happened trying to delete the existing VPN log file");
+        errorTrace("common.py", str(e))
+
+
 def getTestFilePath():
     # Return the full filename for the VPN log file
     # It's platform dependent, but can be forced to the Kodi log location
@@ -315,23 +341,7 @@ def startVPN(vpn_profile):
     
     # Remove the log file to avoid reading out of date info
     log_file = getVPNLogFilePath()
-    try:
-        if xbmcvfs.exists(log_file):
-            xbmcvfs.delete(log_file)
-            xbmc.sleep(500);
-            i = 0
-            while xbmcvfs.exists(log_file) and i < 10:
-                xbmc.sleep(1000)
-                i = i + 1
-            if i == 10:
-                errorTrace("vpnplatform.py", "Tried to delete VPN log file " + log_file + " and it didn't go after 10 seconds")
-            else:
-                debugTrace("Deleted the VPN log file " + log_file + " before starting a new connection")
-        else:
-            debugTrace("No VPN log file " + log_file + " exists to be deleted before starting connection")
-    except Exception as e:
-        errorTrace("vpnplatform.py", "Something bad happened trying to delete the existing VPN log file");
-        errorTrace("common.py", str(e))
+    clearVPNLogFilePath(log_file)
         
     # Even if something bad has happened with the log file, we're going to try to start the VPN anyway...
     if not fakeConnection():
